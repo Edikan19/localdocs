@@ -764,3 +764,144 @@ a {
     animation-iteration-count: 1 !important;
   }
 }
+
+
+/* Document editor */
+
+.editor-page {
+  min-height: 100vh;
+  background: #f7f8fa;
+  color: #202124;
+}
+
+.editor-header {
+  min-height: 68px;
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.editor-brand {
+  color: #202124;
+  font-size: 19px;
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: -0.6px;
+}
+
+.editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.editor-save-status {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.editor-back-link {
+  padding: 9px 14px;
+  color: #374151;
+  font-size: 13px;
+  text-decoration: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.editor-back-link:hover {
+  background: #f3f4f6;
+}
+
+.editor-workspace {
+  width: min(100% - 32px, 920px);
+  margin: 28px auto 64px;
+}
+
+.editor-toolbar {
+  margin-bottom: 14px;
+}
+
+.editor-document-id {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.editor-paper {
+  min-height: 680px;
+  padding: 64px 76px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgb(15 23 42 / 4%);
+}
+
+.editor-title {
+  display: block;
+  width: 100%;
+  margin-bottom: 28px;
+  padding: 0;
+  color: #202124;
+  font-size: 32px;
+  font-weight: 650;
+  letter-spacing: -1.1px;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.editor-title::placeholder {
+  color: #9ca3af;
+}
+
+.editor-content {
+  display: block;
+  width: 100%;
+  min-height: 470px;
+  padding: 0;
+  color: #374151;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.9;
+  resize: vertical;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.editor-content::placeholder {
+  color: #9ca3af;
+}
+
+@media (max-width: 600px) {
+  .editor-header {
+    padding: 0 16px;
+  }
+
+  .editor-header-actions {
+    gap: 10px;
+  }
+
+  .editor-save-status {
+    display: none;
+  }
+
+  .editor-workspace {
+    width: calc(100% - 20px);
+    margin-top: 16px;
+  }
+
+  .editor-paper {
+    min-height: 600px;
+    padding: 36px 22px;
+  }
+
+  .editor-title {
+    font-size: 27px;
+  }
+}
+

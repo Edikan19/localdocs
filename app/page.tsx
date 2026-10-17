@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type DocumentItem = {
   id: number;
@@ -44,6 +45,7 @@ const initialDocuments: DocumentItem[] = [
 ];
 
 export default function Home() {
+  const router = useRouter();
   const [documents, setDocuments] = useState(initialDocuments);
   const [search, setSearch] = useState("");
 
@@ -55,17 +57,26 @@ export default function Home() {
     [documents, search],
   );
 
-  function createDocument() {
-    const newDocument: DocumentItem = {
-      id: Date.now(),
-      title: "Untitled document",
-      updatedAt: "Edited just now",
-      collaborators: 1,
-      color: "blue",
-    };
+  
+function createDocument() {
+  const newDocumentId = Date.now();
 
-    setDocuments((current) => [newDocument, ...current]);
-  }
+  const newDocument: DocumentItem = {
+    id: newDocumentId,
+    title: "Untitled document",
+    updatedAt: "Just now",
+    collaborators: 1,
+    color: "blue",
+  };
+
+  setDocuments((currentDocuments) => [
+    newDocument,
+    ...currentDocuments,
+  ]);
+
+  router.push(`/documents/${newDocumentId}`);
+}
+
 
   return (
     <main className="workspace">
