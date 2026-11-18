@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LocalDocs
 
-## Getting Started
+A real-time collaborative document editor for local networks, a small Google Docs built from scratch. Several people open the same document and edit it at the same time, with no internet needed.
 
-First, run the development server:
+> **Status: work in progress.** Live multi-user text editing and persistence work. Rich text, live cursors, tests and CI are in progress.
 
+## What works
+- Real-time editing across browser tabs and devices on the same network
+- Conflict-free merging (two people typing at the same spot, or editing offline)
+- Documents saved to SQLite and restored on reload
+- Live "N people editing" presence count
+- Automatic reconnect with exponential backoff
+
+## Stack
+Next.js (App Router) · TypeScript · Prisma + SQLite · WebSockets (`ws`) · Yjs (CRDT)
+
+## Getting started
 ```bash
+npm install
+cp .env.example .env
+npx prisma migrate dev
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
+Open the printed Network URL on other devices on the same Wi-Fi.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## How it works
+The browser holds a Yjs document and talks to a custom Node server (`server.ts`) over WebSockets at `/ws/<documentId>`. The server keeps one in-memory Yjs document per open document (`lib/collab/rooms.ts`), relays updates and presence to everyone in that room, and saves the state to SQLite every couple of seconds. The sync protocol layer is written by hand on top of `y-protocols`; Yjs handles the conflict-resolution algorithm.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Roadmap
+- [x] Real-time sync and persistence
+- [ ] Document list and rename
+- [ ] Tests and CI
+- [ ] Rich text (TipTap) and live cursors
+- [ ] Heartbeats, size limits, Docker

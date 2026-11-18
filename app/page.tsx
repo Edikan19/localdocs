@@ -2,52 +2,116 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type DocumentItem = {
-  id: number;
+  id: string;
   title: string;
+  createdAt: string;
   updatedAt: string;
-  collaborators: number;
-  color: string;
 };
 
-const initialDocuments: DocumentItem[] = [
-  {
-    id: 1,
-    title: "Project planning",
-    updatedAt: "Edited 12 minutes ago",
-    collaborators: 3,
-    color: "blue",
-  },
-  {
-    id: 2,
-    title: "Meeting notes",
-    updatedAt: "Edited yesterday",
-    collaborators: 2,
-    color: "violet",
-  },
-  {
-    id: 3,
-    title: "Ideas and research",
-    updatedAt: "Edited 2 days ago",
-    collaborators: 1,
-    color: "amber",
-  },
-  {
-    id: 4,
-    title: "Product requirements",
-    updatedAt: "Edited 4 days ago",
-    collaborators: 4,
-    color: "green",
-  },
-];
+type DocumentsResponse = {
+  documents?: DocumentItem[];
+  error?: string;
+};
+
+type CreateDocumentResponse = {
+  document?: DocumentItem;
+  error?: string;
+};
+
+function formatUpdatedAt(value: string) {
+  const timestamp = new Date(value).getTime();
+
+  if (Number.isNaN(timestamp)) {
+    return "Recently edited";
+  }
+
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor((Date.now() - timestamp) / 1000),
+  );
+
+  if (elapsedSeconds < 60) {
+    return "Edited just now";
+  }
+
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+
+  if (elapsedMinutes < 60) {
+    return `Edited ${elapsedMinutes} minute${elapsedMinutes === 1 ? "" : "s"} ago`;
+  }
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+
+  if (elapsedHours < 24) {
+    return `Edited ${elapsedHours} hour${elapsedHours === 1 ? "" : "s"} ago`;
+  }
+
+  const elapsedDays = Math.floor(elapsedHours / 24);
+
+  if (elapsedDays < 7) {
+    return `Edited ${elapsedDays} day${elapsedDays === 1 ? "" : "s"} ago`;
+  }
+
+  return `Edited ${new Date(value).toLocaleDateString()}`;
+}
 
 export default function Home() {
   const router = useRouter();
-  const [documents, setDocuments] = useState(initialDocuments);
+
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadDocuments() {
+      try {
+        const response = await fetch("/api/documents", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        const payload =
+          (await response.json()) as DocumentsResponse;
+
+        if (!response.ok || !Array.isArray(payload.documents)) {
+          throw new Error(
+            payload.error ?? "Unable to load your documents.",
+          );
+        }
+
+        setDocuments(payload.documents);
+        setLoadError(null);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load your documents.",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadDocuments();
+
+    return () => controller.abort();
+  }, [reloadKey]);
 
   const filteredDocuments = useMemo(
     () =>
@@ -57,26 +121,44 @@ export default function Home() {
     [documents, search],
   );
 
-  
-function createDocument() {
-  const newDocumentId = Date.now();
+  const createDocument = useCallback(async () => {
+    if (isCreating) {
+      return;
+    }
 
-  const newDocument: DocumentItem = {
-    id: newDocumentId,
-    title: "Untitled document",
-    updatedAt: "Just now",
-    collaborators: 1,
-    color: "blue",
-  };
+    setIsCreating(true);
+    setCreateError(null);
 
-  setDocuments((currentDocuments) => [
-    newDocument,
-    ...currentDocuments,
-  ]);
+    try {
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: "Untitled document",
+        }),
+      });
 
-  router.push(`/documents/${newDocumentId}`);
-}
+      const payload =
+        (await response.json()) as CreateDocumentResponse;
 
+      if (!response.ok || !payload.document) {
+        throw new Error(
+          payload.error ?? "Unable to create your document.",
+        );
+      }
+
+      router.push(`/documents/${payload.document.id}`);
+    } catch (error) {
+      setCreateError(
+        error instanceof Error
+          ? error.message
+          : "Unable to create your document.",
+      );
+      setIsCreating(false);
+    }
+  }, [isCreating, router]);
 
   return (
     <main className="workspace">
@@ -86,9 +168,13 @@ function createDocument() {
           <span>localdocs</span>
         </Link>
 
-        <button className="new-document-button" onClick={createDocument}>
+        <button
+          className="new-document-button"
+          onClick={createDocument}
+          disabled={isCreating}
+        >
           <span aria-hidden="true">＋</span>
-          New document
+          {isCreating ? "Creating..." : "New document"}
         </button>
 
         <nav className="navigation" aria-label="Main navigation">
@@ -136,29 +222,47 @@ function createDocument() {
                 A quiet space to write, think, and work together.
               </p>
             </div>
-            <button className="primary-button" onClick={createDocument}>
+            <button
+              className="primary-button"
+              onClick={createDocument}
+              disabled={isCreating}
+            >
               <span aria-hidden="true">＋</span>
-              New document
+              {isCreating ? "Creating..." : "New document"}
             </button>
           </section>
 
+          {createError && (
+            <p role="alert">
+              {createError}
+            </p>
+          )}
+
           <section className="quick-stats" aria-label="Workspace overview">
             <div className="stat-card">
-              <span className="stat-icon blue-icon" aria-hidden="true">▤</span>
+              <span className="stat-icon blue-icon" aria-hidden="true">
+                ▤
+              </span>
               <div>
                 <p className="stat-label">Total documents</p>
-                <p className="stat-value">{documents.length}</p>
+                <p className="stat-value">
+                  {loading ? "—" : documents.length}
+                </p>
               </div>
             </div>
             <div className="stat-card">
-              <span className="stat-icon green-icon" aria-hidden="true">↗</span>
+              <span className="stat-icon green-icon" aria-hidden="true">
+                ↗
+              </span>
               <div>
                 <p className="stat-label">Workspace</p>
                 <p className="stat-value">Private</p>
               </div>
             </div>
             <div className="stat-card">
-              <span className="stat-icon violet-icon" aria-hidden="true">◎</span>
+              <span className="stat-icon violet-icon" aria-hidden="true">
+                ◎
+              </span>
               <div>
                 <p className="stat-label">Connection</p>
                 <p className="stat-value">Local-first</p>
@@ -186,10 +290,29 @@ function createDocument() {
             </div>
 
             <div className="document-list">
-              {filteredDocuments.length > 0 ? (
+              {loading ? (
+                <div className="empty-state" role="status">
+                  <h3>Loading documents...</h3>
+                  <p>Fetching your saved documents.</p>
+                </div>
+              ) : loadError ? (
+                <div className="empty-state" role="alert">
+                  <h3>Couldn&apos;t load documents</h3>
+                  <p>{loadError}</p>
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      setLoading(true);
+                      setReloadKey((current) => current + 1);
+                    }}
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : filteredDocuments.length > 0 ? (
                 filteredDocuments.map((document) => (
                   <article className="document-row" key={document.id}>
-                    <div className={`document-icon ${document.color}`}>
+                    <div className="document-icon blue">
                       <svg
                         viewBox="0 0 24 24"
                         fill="none"
@@ -203,31 +326,35 @@ function createDocument() {
                     </div>
                     <div className="document-details">
                       <h3>{document.title}</h3>
-                      <p>{document.updatedAt}</p>
+                      <p>{formatUpdatedAt(document.updatedAt)}</p>
                     </div>
-                    <div className="collaborator-count" title="Collaborators">
-                      <span aria-hidden="true">♧</span>
-                      {document.collaborators}
-                    </div>
-                    <span className="document-badge">
-                      {document.collaborators > 1 ? "Shared" : "Private"}
-                    </span>
-                    <button
+                    <span className="document-badge">Local</span>
+                    <Link
                       className="more-button"
-                      aria-label={`More options for ${document.title}`}
-                      title="More options coming soon"
-                      disabled
+                      href={`/documents/${document.id}`}
+                      aria-label={`Open ${document.title}`}
+                      title={`Open ${document.title}`}
                     >
-                      ···
-                    </button>
+                      →
+                    </Link>
                   </article>
                 ))
               ) : (
                 <div className="empty-state">
                   <span aria-hidden="true">⌕</span>
-                  <h3>No documents found</h3>
-                  <p>Try another search, or create a new document.</p>
-                  <button className="text-button" onClick={createDocument}>
+                  <h3>
+                    {search ? "No documents found" : "No documents yet"}
+                  </h3>
+                  <p>
+                    {search
+                      ? "Try another search, or create a new document."
+                      : "Create your first document to get started."}
+                  </p>
+                  <button
+                    className="text-button"
+                    onClick={createDocument}
+                    disabled={isCreating}
+                  >
                     Create a document
                   </button>
                 </div>
