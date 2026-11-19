@@ -53,3 +53,32 @@ export function transformIndex(index: number, delta: Delta): number {
 
   return index + shift;
 }
+
+/** Two-way bind a Y.Text to an <input> or <textarea>. Returns a cleanup function. */
+export function bindTextControl(
+  ytext: Y.Text,
+  el: HTMLInputElement | HTMLTextAreaElement,
+) {
+  const onInput = () => applyTextDiff(ytext, el.value);
+
+  const observer = (event: Y.YTextEvent) => {
+    if (event.transaction.origin === LOCAL_ORIGIN) return;
+    const { selectionStart, selectionEnd } = el;
+    const scrollTop = el instanceof HTMLTextAreaElement ? el.scrollTop : 0;
+    el.value = ytext.toString();
+    el.setSelectionRange(
+      transformIndex(selectionStart ?? 0, event.delta),
+      transformIndex(selectionEnd ?? 0, event.delta),
+    );
+    if (el instanceof HTMLTextAreaElement) el.scrollTop = scrollTop;
+  };
+
+  el.value = ytext.toString();
+  el.addEventListener("input", onInput);
+  ytext.observe(observer);
+
+  return () => {
+    el.removeEventListener("input", onInput);
+    ytext.unobserve(observer);
+  };
+}

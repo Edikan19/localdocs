@@ -4,11 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import * as Y from "yjs";
 import { CollabProvider, type ConnectionStatus } from "@/lib/collab/provider";
-import {
-  LOCAL_ORIGIN,
-  applyTextDiff,
-  transformIndex,
-} from "@/lib/collab/text-binding";
+import { bindTextControl } from "@/lib/collab/text-binding";
 
 type DocumentEditorProps = {
   documentId: string;
@@ -24,35 +20,21 @@ function statusLabel(status: ConnectionStatus, synced: boolean, peers: number) {
 }
 
 export default function DocumentEditor({ documentId }: DocumentEditorProps) {
-  const [title, setTitle] = useState("Untitled document");
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [synced, setSynced] = useState(false);
   const [peers, setPeers] = useState(1);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const ytextRef = useRef<Y.Text | null>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.value = "";
+    const titleEl = titleRef.current;
+    const bodyEl = bodyRef.current;
+    if (!titleEl || !bodyEl) return;
 
     const doc = new Y.Doc();
-    const ytext = doc.getText("content");
-    ytextRef.current = ytext;
-
-    // Remote edits: update the textarea but keep the cursor where it was
-    const observer = (event: Y.YTextEvent) => {
-      if (event.transaction.origin === LOCAL_ORIGIN) return;
-      const { selectionStart, selectionEnd, scrollTop } = textarea;
-      textarea.value = ytext.toString();
-      textarea.setSelectionRange(
-        transformIndex(selectionStart, event.delta),
-        transformIndex(selectionEnd, event.delta),
-      );
-      textarea.scrollTop = scrollTop;
-    };
-    ytext.observe(observer);
+    const unbindTitle = bindTextControl(doc.getText("title"), titleEl);
+    const unbindBody = bindTextControl(doc.getText("content"), bodyEl);
 
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     const provider = new CollabProvider(
@@ -69,10 +51,10 @@ export default function DocumentEditor({ documentId }: DocumentEditorProps) {
     updatePeers();
 
     return () => {
-      ytext.unobserve(observer);
+      unbindTitle();
+      unbindBody();
       provider.destroy();
       doc.destroy();
-      ytextRef.current = null;
     };
   }, [documentId]);
 
@@ -101,21 +83,18 @@ export default function DocumentEditor({ documentId }: DocumentEditorProps) {
 
         <div className="editor-paper">
           <input
+            ref={titleRef}
             className="editor-title"
             type="text"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            maxLength={120}
+            disabled={!synced}
             aria-label="Document title"
             placeholder="Untitled document"
           />
 
           <textarea
-            ref={textareaRef}
+            ref={bodyRef}
             className="editor-content"
-            onChange={(event) => {
-              const ytext = ytextRef.current;
-              if (ytext) applyTextDiff(ytext, event.target.value);
-            }}
             disabled={!synced}
             aria-label="Document content"
             placeholder={synced ? "Start writing your document..." : ""}

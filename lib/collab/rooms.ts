@@ -28,19 +28,23 @@ class Room {
   }
 
   /** Load saved state from SQLite. Returns false if the document doesn't exist. */
-  async load(): Promise<boolean> {
+    async load(): Promise<boolean> {
     const row = await prisma.document.findUnique({
       where: { id: this.id },
-      select: { state: true, content: true },
+      select: { state: true, content: true, title: true },
     });
     if (!row) return false;
 
     if (row.state) {
       Y.applyUpdate(this.doc, row.state, "db");
     } else if (row.content) {
-      // First time this document is opened collaboratively: seed from plain text
       this.doc.getText("content").insert(0, row.content);
     }
+
+    // Documents saved before titles lived in Yjs have no title text yet
+    const title = this.doc.getText("title");
+    if (title.length === 0 && row.title) title.insert(0, row.title);
+
     return true;
   }
 
@@ -134,13 +138,15 @@ class Room {
     this.doc.destroy();
   }
 
-  private async persist() {
+    private async persist() {
     await prisma.document.update({
       where: { id: this.id },
       data: {
         state: Buffer.from(Y.encodeStateAsUpdate(this.doc)),
-        // Plain-text copy for previews/search. Change this when you move to TipTap.
         content: this.doc.getText("content").toString(),
+        title:
+          this.doc.getText("title").toString().trim().slice(0, 120) ||
+          "Untitled document",
       },
     });
   }
