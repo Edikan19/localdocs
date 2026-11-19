@@ -1,5 +1,7 @@
 # LocalDocs
 
+![CI](https://github.com/Edikan19/localdocs/actions/workflows/ci.yml/badge.svg)
+
 A real-time collaborative document editor for local networks, a small Google Docs built from scratch. Several people open the same document and edit it at the same time, with no internet needed.
 
 > **Status: work in progress.** Real-time rich-text editing with live cursors works. Hardening and Docker are in progress.
