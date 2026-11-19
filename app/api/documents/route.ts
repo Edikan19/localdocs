@@ -24,10 +24,22 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  let title: string | undefined;
+
+  try {
+    const body = await request.json();
+    if (typeof body?.title === "string") {
+      const trimmed = body.title.trim();
+      if (trimmed.length > 0 && trimmed.length <= 120) title = trimmed;
+    }
+  } catch {
+    // an empty or invalid body is fine; the default title is used
+  }
+
   try {
     const document = await prisma.document.create({
-      data: {},
+      data: title ? { title } : {},
       select: summary,
     });
     return NextResponse.json({ document }, { status: 201 });
