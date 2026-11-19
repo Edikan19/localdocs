@@ -2,7 +2,7 @@
 
 A real-time collaborative document editor for local networks, a small Google Docs built from scratch. Several people open the same document and edit it at the same time, with no internet needed.
 
-> **Status: work in progress.** Live multi-user text editing and persistence work. Rich text, live cursors, tests and CI are in progress.
+> **Status: work in progress.** Real-time rich-text editing with live cursors works. Hardening and Docker are in progress.
 
 ## What works
 - Real-time editing across browser tabs and devices on the same network
@@ -10,6 +10,9 @@ A real-time collaborative document editor for local networks, a small Google Doc
 - Documents saved to SQLite and restored on reload
 - Live "N people editing" presence count
 - Automatic reconnect with exponential backoff
+- Rich text (headings, lists, bold, italic) with per-user undo
+- Live collaborator cursors with names
+- Live-synced document titles and a document dashboard
 
 ## Stack
 Next.js (App Router) · TypeScript · Prisma + SQLite · WebSockets (`ws`) · Yjs (CRDT)
@@ -28,7 +31,7 @@ The browser holds a Yjs document and talks to a custom Node server (`server.ts`)
 
 ## Roadmap
 - [x] Real-time sync and persistence
-- [ ] Document list and rename
-- [ ] Tests and CI
-- [ ] Rich text (TipTap) and live cursors
+- [x] Document list and rename
+- [x] Tests and CI
+- [x] Rich text (TipTap) and live cursors
 - [ ] Heartbeats, size limits, Docker
