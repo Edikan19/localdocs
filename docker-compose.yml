@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "file:/data/localdocs.db"
+    volumes:
+      - localdocs-data:/data
+    restart: unless-stopped
+
+volumes:
+  localdocs-data:
