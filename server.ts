@@ -30,7 +30,10 @@ async function main() {
     void handleRequest(req, res);
   });
 
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: 4 * 1024 * 1024, // 4 MiB per message; anything larger closes that socket
+  });
 
   server.on("upgrade", (req, socket, head) => {
     const { pathname } = new URL(req.url ?? "/", "http://localhost");

@@ -5,10 +5,12 @@ import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import type { WebSocket } from "ws";
 import { prisma } from "../prisma";
+import { fragmentToText, textToParagraphs } from "./doc-text";
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 const SAVE_INTERVAL_MS = 2000;
+const HEARTBEAT_MS = 30_000;
 
 class Room {
   readonly doc = new Y.Doc();
@@ -28,7 +30,7 @@ class Room {
   }
 
   /** Load saved state from SQLite. Returns false if the document doesn't exist. */
-    async load(): Promise<boolean> {
+  async load(): Promise<boolean> {
     const row = await prisma.document.findUnique({
       where: { id: this.id },
       select: { state: true, content: true, title: true },
@@ -37,8 +39,13 @@ class Room {
 
     if (row.state) {
       Y.applyUpdate(this.doc, row.state, "db");
-    } else if (row.content) {
-      this.doc.getText("content").insert(0, row.content);
+    }
+
+    // Documents from before rich text kept plain text in "content"; carry it over once
+    const body = this.doc.getXmlFragment("body");
+    if (body.length === 0) {
+      const legacy = this.doc.getText("content").toString() || row.content;
+      if (legacy) body.insert(0, textToParagraphs(legacy));
     }
 
     // Documents saved before titles lived in Yjs have no title text yet
@@ -124,8 +131,13 @@ class Room {
       try {
         await this.persist();
       } catch (error) {
-        this.dirty = true;
-        console.error(`[room ${this.id}] save failed:`, error);
+        if ((error as { code?: string }).code === "P2025") {
+          // Prisma: record not found, so the document was deleted while open
+          this.closeAll(4404, "Document deleted");
+        } else {
+          this.dirty = true;
+          console.error(`[room ${this.id}] save failed:`, error);
+        }
       }
     });
     return this.saving;
@@ -138,12 +150,13 @@ class Room {
     this.doc.destroy();
   }
 
-    private async persist() {
+  private async persist() {
     await prisma.document.update({
       where: { id: this.id },
       data: {
         state: Buffer.from(Y.encodeStateAsUpdate(this.doc)),
-        content: this.doc.getText("content").toString(),
+        // Plain-text copy for previews and search
+        content: fragmentToText(this.doc.getXmlFragment("body")),
         title:
           this.doc.getText("title").toString().trim().slice(0, 120) ||
           "Untitled document",
@@ -164,6 +177,10 @@ class Room {
     for (const ws of this.conns.keys()) {
       if (ws.readyState === ws.OPEN) ws.send(message);
     }
+  }
+
+  private closeAll(code: number, reason: string) {
+    for (const ws of this.conns.keys()) ws.close(code, reason);
   }
 
   private onDocUpdate = (update: Uint8Array, origin: unknown) => {
@@ -251,6 +268,21 @@ export async function handleConnection(ws: WebSocket, docId: string) {
   const queued: Uint8Array[] = [];
   let room: Room | null = null;
 
+  // Heartbeat: drop connections that stop answering pings
+  // (for example a phone that lost Wi-Fi without closing the socket)
+  let alive = true;
+  ws.on("pong", () => {
+    alive = true;
+  });
+  const heartbeat = setInterval(() => {
+    if (!alive) {
+      ws.terminate(); // fires "close", which cleans up the room and presence
+      return;
+    }
+    alive = false;
+    ws.ping();
+  }, HEARTBEAT_MS);
+
   ws.on("message", (data, isBinary) => {
     if (!isBinary) return;
     const buf = data as Buffer;
@@ -262,6 +294,7 @@ export async function handleConnection(ws: WebSocket, docId: string) {
   ws.on("error", (error) => console.error(`[ws ${docId}]`, error));
 
   ws.on("close", () => {
+    clearInterval(heartbeat);
     if (!room) return;
     room.removeConnection(ws);
     console.log(`[room ${docId}] client left (${room.conns.size} connected)`);
