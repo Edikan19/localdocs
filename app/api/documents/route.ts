@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const MAX_DOCUMENTS = Number(process.env.MAX_DOCUMENTS ?? 200);
+
 const summary = {
   id: true,
   title: true,
@@ -38,6 +40,14 @@ export async function POST(request: Request) {
   }
 
   try {
+    const total = await prisma.document.count();
+    if (total >= MAX_DOCUMENTS) {
+      return NextResponse.json(
+        { error: "Document limit reached. Delete one to create another." },
+        { status: 429 },
+      );
+    }
+
     const document = await prisma.document.create({
       data: title ? { title } : {},
       select: summary,

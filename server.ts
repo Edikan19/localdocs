@@ -4,10 +4,18 @@ import os from "node:os";
 import next from "next";
 import { WebSocketServer } from "ws";
 import { flushAllRooms, handleConnection } from "./lib/collab/rooms";
+import { isAllowedOrigin } from "./lib/collab/origin";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0"; // listen on all interfaces so other devices can connect
 const port = Number(process.env.PORT ?? 3000);
+
+// Extra origins allowed to open WebSocket connections (comma-separated).
+// Same-host connections are always allowed.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 const app = next({ dev, hostname, port });
 const handleRequest = app.getRequestHandler();
@@ -44,6 +52,13 @@ async function main() {
       // so hand it back instead of dropping it.
       if (dev) void handleUpgrade(req, socket, head);
       else socket.destroy();
+      return;
+    }
+
+    // Reject connections opened from other websites
+    if (!isAllowedOrigin(req.headers.origin, req.headers.host, allowedOrigins)) {
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+      socket.destroy();
       return;
     }
 
