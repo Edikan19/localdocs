@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { readCookie } from "./cookies";
-import { cleanName, normalizeEmail, passwordProblem } from "./validation";
+import {
+  cleanName,
+  normalizeEmail,
+  passwordProblem,
+  safeNextPath,
+} from "./validation";
 import { createRateLimiter } from "./rate-limit";
+import { canEdit } from "./roles";
 
 describe("readCookie", () => {
   it("finds a cookie among several", () => {
@@ -61,5 +67,28 @@ describe("rate limiter", () => {
     expect(check("a", 0).allowed).toBe(true);
     expect(check("b", 0).allowed).toBe(true);
     expect(check("a", 1).allowed).toBe(false);
+  });
+});
+
+describe("safeNextPath", () => {
+  it("allows paths on this site", () => {
+    expect(safeNextPath("/documents/abc")).toBe("/documents/abc");
+  });
+
+  it("falls back to / for anything else", () => {
+    expect(safeNextPath(undefined)).toBe("/");
+    expect(safeNextPath("https://evil.example")).toBe("/");
+    expect(safeNextPath("//evil.example")).toBe("/");
+    expect(safeNextPath("/\\evil.example")).toBe("/");
+    expect(safeNextPath("/login")).toBe("/");
+  });
+});
+
+describe("canEdit", () => {
+  it("lets owners and editors edit, but not viewers or strangers", () => {
+    expect(canEdit("owner")).toBe(true);
+    expect(canEdit("editor")).toBe(true);
+    expect(canEdit("viewer")).toBe(false);
+    expect(canEdit(null)).toBe(false);
   });
 });

@@ -10,9 +10,12 @@ import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { CollabProvider, type ConnectionStatus } from "@/lib/collab/provider";
 import { bindTextControl } from "@/lib/collab/text-binding";
+import { canEdit, type DocumentRole } from "@/lib/auth/roles";
+
 
 type DocumentEditorProps = {
   documentId: string;
+  role: DocumentRole;
 };
 
 type Session = {
@@ -118,13 +121,16 @@ function RichEditor({ session, editable }: { session: Session; editable: boolean
   );
 }
 
-export default function DocumentEditor({ documentId }: DocumentEditorProps) {
+export default function DocumentEditor({ documentId, role }: DocumentEditorProps) {
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [synced, setSynced] = useState(false);
   const [peers, setPeers] = useState(1);
   const [session, setSession] = useState<Session | null>(null);
 
   const titleRef = useRef<HTMLInputElement>(null);
+
+  // Viewers get a read-only editor (the server enforces this too, in step 2c)
+  const canWrite = canEdit(role);
 
   useEffect(() => {
     const titleEl = titleRef.current;
@@ -189,12 +195,12 @@ export default function DocumentEditor({ documentId }: DocumentEditorProps) {
             className="editor-title"
             type="text"
             maxLength={120}
-            disabled={!synced}
+            disabled={!synced || !canWrite}
             aria-label="Document title"
             placeholder="Untitled document"
           />
 
-          {session && <RichEditor session={session} editable={synced} />}
+          {session && <RichEditor session={session} editable={synced && canWrite} />}
         </div>
       </section>
     </main>

@@ -19,3 +19,14 @@ export function passwordProblem(value: unknown): string | null {
   if (value.length > 128) return "Password must be at most 128 characters.";
   return null;
 }
+
+
+/** Only allow redirects to paths on this site, and never back to the auth pages. */
+export function safeNextPath(value: unknown): string {
+  if (typeof value !== "string") return "/";
+  if (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) {
+    return "/";
+  }
+  if (value.startsWith("/login") || value.startsWith("/signup")) return "/";
+  return value;
+}
