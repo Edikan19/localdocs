@@ -1,7 +1,8 @@
-
 import { Suspense } from "react";
+import { notFound, redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { getDocumentRole } from "@/lib/auth/access";
 import DocumentEditor from "./document-editor";
-
 
 type DocumentPageProps = {
   params: Promise<{ id: string }>;
@@ -24,5 +25,11 @@ export default function DocumentPage({ params }: DocumentPageProps) {
 async function DocumentRoute({ params }: DocumentPageProps) {
   const { id } = await params;
 
-  return <DocumentEditor documentId={id} />;
+  const user = await getCurrentUser();
+  if (!user) redirect(`/login?next=${encodeURIComponent(`/documents/${id}`)}`);
+
+  const role = await getDocumentRole(user.id, id);
+  if (!role) notFound();
+
+  return <DocumentEditor documentId={id} role={role} userName={user.name} />;
 }

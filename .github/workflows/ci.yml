@@ -21,3 +21,34 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start with Docker Compose
+        run: docker compose up -d --build
+        env:
+          COOKIE_SECURE: "false" # the test talks plain http
+      - name: Wait until the app responds
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/api/health > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo "App did not become healthy in time"
+          exit 1
+      - name: Smoke test accounts and documents
+        run: |
+          set -e
+          curl -fsS -c /tmp/jar -X POST http://localhost:3000/api/auth/signup \
+            -H "Content-Type: application/json" \
+            -d '{"email":"ci@example.com","name":"CI","password":"ci-password-123"}'
+          curl -fsS -b /tmp/jar -X POST http://localhost:3000/api/documents
+          curl -fsS -b /tmp/jar http://localhost:3000/api/documents
+          # without a session the API must refuse
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/documents)" = "401"
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs app

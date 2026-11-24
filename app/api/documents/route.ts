@@ -1,21 +1,40 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth/current-user";
 
+// Maximum documents each person can own
 const MAX_DOCUMENTS = Number(process.env.MAX_DOCUMENTS ?? 200);
 
-const summary = {
-  id: true,
-  title: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
+const UNAUTHORIZED = { error: "Not signed in." };
 
 export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
   try {
-    const documents = await prisma.document.findMany({
+    const rows = await prisma.document.findMany({
+      where: {
+        OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }],
+      },
       orderBy: { updatedAt: "desc" },
-      select: summary,
+      select: {
+        id: true,
+        title: true,
+        createdAt: true,
+        updatedAt: true,
+        ownerId: true,
+        members: { where: { userId: user.id }, select: { role: true } },
+      },
     });
+
+    const documents = rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      role: row.ownerId === user.id ? "owner" : (row.members[0]?.role ?? "viewer"),
+    }));
+
     return NextResponse.json({ documents });
   } catch (error) {
     console.error("Failed to list documents:", error);
@@ -27,8 +46,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  let title: string | undefined;
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
+  let title: string | undefined;
   try {
     const body = await request.json();
     if (typeof body?.title === "string") {
@@ -40,8 +61,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const total = await prisma.document.count();
-    if (total >= MAX_DOCUMENTS) {
+    const owned = await prisma.document.count({ where: { ownerId: user.id } });
+    if (owned >= MAX_DOCUMENTS) {
       return NextResponse.json(
         { error: "Document limit reached. Delete one to create another." },
         { status: 429 },
@@ -49,8 +70,8 @@ export async function POST(request: Request) {
     }
 
     const document = await prisma.document.create({
-      data: title ? { title } : {},
-      select: summary,
+      data: { ownerId: user.id, ...(title ? { title } : {}) },
+      select: { id: true, title: true, createdAt: true, updatedAt: true },
     });
     return NextResponse.json({ document }, { status: 201 });
   } catch (error) {

@@ -7,6 +7,29 @@ datasource db {
   provider = "sqlite"
 }
 
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  sessions       Session[]
+  ownedDocuments Document[]       @relation("DocumentOwner")
+  memberships    DocumentMember[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 model Document {
   id        String   @id @default(cuid())
   title     String   @default("Untitled document")
@@ -14,4 +37,23 @@ model Document {
   state     Bytes?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  ownerId String?
+  owner   User?            @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members DocumentMember[]
+
+  @@index([ownerId])
+}
+
+model DocumentMember {
+  documentId String
+  userId     String
+  role       String // "editor" or "viewer"
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, userId])
+  @@index([userId])
 }

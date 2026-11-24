@@ -12,7 +12,8 @@ export type ConnectionStatus =
   | "connecting"
   | "connected"
   | "disconnected"
-  | "not-found";
+  | "not-found"
+  | "unauthorized";
 
 type Callbacks = {
   onStatus?: (status: ConnectionStatus) => void;
@@ -121,9 +122,14 @@ export class CollabProvider {
       );
       awarenessProtocol.removeAwarenessStates(this.awareness, others, this);
 
+      // These codes mean retrying can't help
+      if (event.code === 4401) {
+        this.callbacks.onStatus?.("unauthorized");
+        return;
+      }
       if (event.code === 4404) {
         this.callbacks.onStatus?.("not-found");
-        return; // no point retrying a document that doesn't exist
+        return;
       }
 
       this.callbacks.onStatus?.("disconnected");
