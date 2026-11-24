@@ -30,3 +30,7 @@ export function safeNextPath(value: unknown): string {
   if (value.startsWith("/login") || value.startsWith("/signup")) return "/";
   return value;
 }
+
+export function parseShareRole(value: unknown): "editor" | "viewer" | null {
+  return value === "editor" || value === "viewer" ? value : null;
+}

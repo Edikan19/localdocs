@@ -31,5 +31,5 @@ async function DocumentRoute({ params }: DocumentPageProps) {
   const role = await getDocumentRole(user.id, id);
   if (!role) notFound();
 
-  return <DocumentEditor documentId={id} role={role} />;
+  return <DocumentEditor documentId={id} role={role} userName={user.name} />;
 }

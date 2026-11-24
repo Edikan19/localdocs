@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import * as Y from "yjs";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
@@ -11,11 +12,12 @@ import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { CollabProvider, type ConnectionStatus } from "@/lib/collab/provider";
 import { bindTextControl } from "@/lib/collab/text-binding";
 import { canEdit, type DocumentRole } from "@/lib/auth/roles";
-
+import ShareDialog from "./share-dialog";
 
 type DocumentEditorProps = {
   documentId: string;
   role: DocumentRole;
+  userName: string;
 };
 
 type Session = {
@@ -36,6 +38,7 @@ const CURSOR_COLORS = [
 ];
 
 function statusLabel(status: ConnectionStatus, synced: boolean, peers: number) {
+  if (status === "unauthorized") return "Signed out. Redirecting…";
   if (status === "not-found") return "Document not found";
   if (status === "disconnected") return "Offline: changes will sync when reconnected";
   if (status === "connected" && synced) {
@@ -121,7 +124,13 @@ function RichEditor({ session, editable }: { session: Session; editable: boolean
   );
 }
 
-export default function DocumentEditor({ documentId, role }: DocumentEditorProps) {
+export default function DocumentEditor({
+  documentId,
+  role,
+  userName,
+}: DocumentEditorProps) {
+  const router = useRouter();
+
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [synced, setSynced] = useState(false);
   const [peers, setPeers] = useState(1);
@@ -129,7 +138,7 @@ export default function DocumentEditor({ documentId, role }: DocumentEditorProps
 
   const titleRef = useRef<HTMLInputElement>(null);
 
-  // Viewers get a read-only editor (the server enforces this too, in step 2c)
+  // Viewers get a read-only editor. The server also drops their edits.
   const canWrite = canEdit(role);
 
   useEffect(() => {
@@ -147,7 +156,7 @@ export default function DocumentEditor({ documentId, role }: DocumentEditorProps
     );
 
     const user = {
-      name: `Guest ${Math.floor(1000 + Math.random() * 9000)}`,
+      name: userName,
       color: CURSOR_COLORS[Math.floor(Math.random() * CURSOR_COLORS.length)],
     };
     provider.awareness.setLocalStateField("user", user);
@@ -164,7 +173,16 @@ export default function DocumentEditor({ documentId, role }: DocumentEditorProps
       provider.destroy();
       doc.destroy();
     };
-  }, [documentId]);
+  }, [documentId, userName]);
+
+  // The login expired or was removed: go back to the login page
+  useEffect(() => {
+    if (status === "unauthorized") {
+      router.replace(
+        `/login?next=${encodeURIComponent(`/documents/${documentId}`)}`,
+      );
+    }
+  }, [status, router, documentId]);
 
   return (
     <main className="editor-page">
@@ -174,9 +192,13 @@ export default function DocumentEditor({ documentId, role }: DocumentEditorProps
         </Link>
 
         <div className="editor-header-actions">
+          {!canWrite && <span className="editor-save-status">View only</span>}
+
           <span className="editor-save-status">
             {statusLabel(status, synced, peers)}
           </span>
+
+          {role === "owner" && <ShareDialog documentId={documentId} />}
 
           <Link href="/" className="editor-back-link">
             Back to dashboard

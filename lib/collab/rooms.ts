@@ -6,17 +6,27 @@ import * as decoding from "lib0/decoding";
 import type { WebSocket } from "ws";
 import { prisma } from "../prisma";
 import { fragmentToText, textToParagraphs } from "./doc-text";
+import { isDocumentWrite } from "./permissions";
+import { readCookie, SESSION_COOKIE } from "../auth/cookies";
+import { getUserBySessionToken } from "../auth/session-store";
+import { getDocumentRole } from "../auth/access";
+import { canEdit } from "../auth/roles";
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 const SAVE_INTERVAL_MS = 2000;
+// Every 30 seconds each connection is pinged and its access is re-checked
 const HEARTBEAT_MS = 30_000;
+
+type Connection = {
+  awarenessIds: Set<number>; // awareness client ids this connection controls
+  canWrite: boolean;
+};
 
 class Room {
   readonly doc = new Y.Doc();
   readonly awareness = new awarenessProtocol.Awareness(this.doc);
-  // Each connection -> the awareness client ids it controls (for cleanup)
-  readonly conns = new Map<WebSocket, Set<number>>();
+  readonly conns = new Map<WebSocket, Connection>();
   destroyed = false;
 
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -55,8 +65,8 @@ class Room {
     return true;
   }
 
-  addConnection(ws: WebSocket) {
-    this.conns.set(ws, new Set());
+  addConnection(ws: WebSocket, canWrite: boolean) {
+    this.conns.set(ws, { awarenessIds: new Set(), canWrite });
 
     // Ask the client for what we're missing (sync step 1)
     const sync = encoding.createEncoder();
@@ -80,20 +90,31 @@ class Room {
     }
   }
 
+  setCanWrite(ws: WebSocket, canWrite: boolean) {
+    const connection = this.conns.get(ws);
+    if (connection) connection.canWrite = canWrite;
+  }
+
   removeConnection(ws: WebSocket) {
-    const owned = this.conns.get(ws);
+    const connection = this.conns.get(ws);
     this.conns.delete(ws);
-    if (owned) {
+    if (connection) {
       // Removes this user's cursor/presence for everyone else
       awarenessProtocol.removeAwarenessStates(
         this.awareness,
-        Array.from(owned),
+        Array.from(connection.awarenessIds),
         null,
       );
     }
   }
 
   handleMessage(ws: WebSocket, message: Uint8Array) {
+    const connection = this.conns.get(ws);
+    if (!connection) return;
+
+    // Read-only users may ask for the document but can't change it
+    if (!connection.canWrite && isDocumentWrite(message)) return;
+
     try {
       const decoder = decoding.createDecoder(message);
       const type = decoding.readVarUint(decoder);
@@ -200,7 +221,7 @@ class Room {
     }: { added: number[]; updated: number[]; removed: number[] },
     origin: unknown,
   ) => {
-    const owned = this.conns.get(origin as WebSocket);
+    const owned = this.conns.get(origin as WebSocket)?.awarenessIds;
     if (owned) {
       added.forEach((id) => owned.add(id));
       removed.forEach((id) => owned.delete(id));
@@ -263,10 +284,39 @@ export async function flushAllRooms() {
 
 // --- Connection entry point (called by server.ts) ------------------------
 
-export async function handleConnection(ws: WebSocket, docId: string) {
-  // Messages can arrive while the room is still loading, so queue them
+export async function handleConnection(
+  ws: WebSocket,
+  docId: string,
+  cookieHeader: string | undefined,
+) {
+  // Messages can arrive while we check the login and load the room, so queue them
   const queued: Uint8Array[] = [];
   let room: Room | null = null;
+  let userId: string | null = null;
+  const token = readCookie(cookieHeader, SESSION_COOKIE);
+
+  // Runs every 30 seconds: removing someone's access, or signing out,
+  // takes effect on connections that are already open
+  async function recheckAccess() {
+    const current = room;
+    const uid = userId;
+    if (!current || !uid) return;
+
+    try {
+      if (!(await getUserBySessionToken(token))) {
+        ws.close(4401, "Signed out");
+        return;
+      }
+      const role = await getDocumentRole(uid, docId);
+      if (!role) {
+        ws.close(4404, "Access removed");
+        return;
+      }
+      current.setCanWrite(ws, canEdit(role)); // picks up editor <-> viewer changes
+    } catch (error) {
+      console.error(`[ws ${docId}] access re-check failed:`, error);
+    }
+  }
 
   // Heartbeat: drop connections that stop answering pings
   // (for example a phone that lost Wi-Fi without closing the socket)
@@ -281,6 +331,7 @@ export async function handleConnection(ws: WebSocket, docId: string) {
     }
     alive = false;
     ws.ping();
+    void recheckAccess();
   }, HEARTBEAT_MS);
 
   ws.on("message", (data, isBinary) => {
@@ -302,6 +353,20 @@ export async function handleConnection(ws: WebSocket, docId: string) {
   });
 
   try {
+    const user = await getUserBySessionToken(token);
+    if (!user) {
+      ws.close(4401, "Not signed in");
+      return;
+    }
+
+    // "No access" and "doesn't exist" look the same, so ids can't be probed
+    const role = await getDocumentRole(user.id, docId);
+    if (!role) {
+      ws.close(4404, "Document not found");
+      return;
+    }
+    userId = user.id;
+
     let loaded: Room | null;
     do {
       loaded = await getRoom(docId);
@@ -317,7 +382,7 @@ export async function handleConnection(ws: WebSocket, docId: string) {
     }
 
     room = loaded;
-    room.addConnection(ws);
+    room.addConnection(ws, canEdit(role));
     console.log(`[room ${docId}] client joined (${room.conns.size} connected)`);
     for (const message of queued) room.handleMessage(ws, message);
     queued.length = 0;

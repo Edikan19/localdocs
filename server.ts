@@ -62,9 +62,11 @@ async function main() {
       return;
     }
 
+    // The login cookie and document access are checked inside handleConnection,
+    // which closes the socket with a specific code if either fails
     const docId = match[1];
     wss.handleUpgrade(req, socket, head, (ws) => {
-      void handleConnection(ws, docId);
+      void handleConnection(ws, docId, req.headers.cookie);
     });
   });
 
